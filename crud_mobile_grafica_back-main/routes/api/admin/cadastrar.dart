@@ -129,7 +129,7 @@ Future<Response> onRequest(RequestContext context) async {
     // 1. Verifica se o e-mail já está cadastrado na tabela 'admin'
     final resultadoEmail = await supabase
         .from('admin')
-        .select('id')
+        .select('id_adm')
         .eq('email', email)
         .maybeSingle();
 
@@ -140,7 +140,7 @@ Future<Response> onRequest(RequestContext context) async {
     // 2. Verifica se o CPF já está cadastrado na tabela 'admin'
     final resultadoCpf = await supabase
         .from('admin')
-        .select('id')
+        .select('id_adm')
         .eq('cpf', cpf)
         .maybeSingle();
 
@@ -154,7 +154,7 @@ Future<Response> onRequest(RequestContext context) async {
 
     // 3. Insere o novo administrador na tabela correta 'admin'
     await supabase.from('admin').insert({
-      'id': novoId,
+      'id_adm': novoId,
       'nome': nome,
       'email': email,
       'cpf': cpf,
@@ -168,7 +168,7 @@ Future<Response> onRequest(RequestContext context) async {
         'sucesso': true,
         'mensagem': 'Administrador cadastrado com sucesso!',
         'admin': {
-          'id': novoId,
+          'id_adm': novoId,
           'nome': nome,
           'email': email,
           'cpf': cpf,
@@ -180,8 +180,12 @@ Future<Response> onRequest(RequestContext context) async {
 
     // Tratamento de segurança caso ocorra erro de duplicidade no banco
     final errorString = e.toString().toLowerCase();
-    if (errorString.contains('duplicate key') || errorString.contains('unique constraint')) {
-      return respostaErro(409, 'Este e-mail ou CPF já está cadastrado no sistema.');
+    if (errorString.contains('duplicate key') ||
+        errorString.contains('unique constraint')) {
+      return respostaErro(
+        409,
+        'Este e-mail ou CPF já está cadastrado no sistema.',
+      );
     }
 
     return respostaErro(500, 'Erro interno ao cadastrar administrador.');

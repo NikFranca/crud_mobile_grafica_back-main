@@ -3,6 +3,7 @@ import 'package:crud_mobile_grafica_back/services/sessoes_admin.dart';
 import 'package:crypto/crypto.dart';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:supabase/supabase.dart';
+import 'package:bcrypt/bcrypt.dart';
 
 // Função para retornar mensagens padronizadas de erro
 Response respostaErro(int statusCode, String mensagem) {
@@ -73,6 +74,9 @@ Future<Response> onRequest(RequestContext context) async {
         .select('id_adm, nome, email, senha')
         .eq('email', email)
         .maybeSingle();
+    print(
+      'LOGIN_DIAG: administrador_encontrado=${adminEncontrado != null}',
+    );
 
     if (adminEncontrado == null) {
       return respostaErro(401, 'E-mail ou senha inválidos!');
@@ -84,12 +88,41 @@ Future<Response> onRequest(RequestContext context) async {
     final senhaArmazenada = adminEncontrado['senha']?.toString() ?? '';
 
     // Gera o mesmo hash SHA-256 em Base64 usado no cadastrar.dart
-    final senhaHashEnviada = base64Encode(
-      sha256.convert(utf8.encode(senha)).bytes,
-    );
+    bool senhaCorreta = false;
 
-    if (senhaArmazenada.isEmpty || senhaHashEnviada != senhaArmazenada) {
-      return respostaErro(401, 'E-mail ou senha inválidos!');
+    final usaBcrypt =
+        senhaArmazenada.startsWith(r'$2a$') ||
+        senhaArmazenada.startsWith(r'$2b$') ||
+        senhaArmazenada.startsWith(r'$2y$');
+
+    if (usaBcrypt) {
+      // Contas criadas pelo cadastro atual.
+      try {
+        senhaCorreta = BCrypt.checkpw(
+          senha,
+          senhaArmazenada,
+        );
+      } catch (_) {
+        senhaCorreta = false;
+      }
+    } else {
+      // Compatibilidade com as contas antigas.
+      final senhaHashEnviada = base64Encode(
+        sha256.convert(utf8.encode(senha)).bytes,
+      );
+
+      senhaCorreta =
+          senhaArmazenada.isNotEmpty && senhaHashEnviada == senhaArmazenada;
+    }
+    print('LOGIN_DIAG: usa_bcrypt=$usaBcrypt');
+    print('LOGIN_DIAG: tamanho_hash=${senhaArmazenada.length}');
+    print('LOGIN_DIAG: senha_confere=$senhaCorreta');
+
+    if (!senhaCorreta) {
+      return respostaErro(
+        401,
+        'E-mail ou senha inválidos!',
+      );
     }
 
     // Login validado com sucesso
