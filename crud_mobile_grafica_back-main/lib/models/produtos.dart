@@ -1,101 +1,88 @@
 class Produto {
-  // Identificador único do produto (suporta tanto inteiro quanto String/UUID para flexibilidade com o Supabase)
-  final dynamic id;
-
-  // Nome do produto
+  final String? id;
   final String nome;
-
-  // Descrição do produto
   final String descricao;
-
-  // Preço do produto
   final double preco;
-
-  // URL da imagem (opcional)
   final String? imagemUrl;
+  final String? categoria;
+  final bool ativo;
 
-  // Construtor da classe Produto
   const Produto({
     this.id,
     required this.nome,
-    required this.descricao,
+    this.descricao = '',
     required this.preco,
     this.imagemUrl,
+    this.categoria,
+    this.ativo = true,
   });
 
-  // ==========================================
-  // CONVERTER JSON PARA OBJETO PRODUTO
-  // ==========================================
-
   factory Produto.fromJson(Map<String, dynamic> json) {
-    // Recupera e valida o ID de forma flexível (aceita int, String ou UUID)
-    final dynamic idProduto = json['id'];
+    String? textoOpcional(Object? valor, String campo) {
+      if (valor == null) return null;
 
-    // Recupera e valida o nome
-    final nomeInformado = json['nome'];
+      if (valor is! String) {
+        throw FormatException('O campo "$campo" deve ser um texto.');
+      }
 
-    if (nomeInformado is! String || nomeInformado.trim().isEmpty) {
-      throw const FormatException(
-        'O nome do produto é obrigatório!',
-      );
+      final texto = valor.trim();
+      return texto.isEmpty ? null : texto;
     }
 
-    final nomeProduto = nomeInformado.trim();
+    final nome = textoOpcional(json['nome'], 'nome');
 
-    // Recupera e valida a descrição
-    final descricaoInformada = json['descricao'];
-
-    if (descricaoInformada is! String || descricaoInformada.trim().isEmpty) {
-      throw const FormatException(
-        'A descrição do produto é obrigatória!',
-      );
+    if (nome == null) {
+      throw const FormatException('O nome do produto é obrigatório.');
     }
 
-    final descricaoProduto = descricaoInformada.trim();
-
-    // Recupera e converte o preço
-    final precoInformado = json['preco'];
-
-    final double? precoProduto = precoInformado is num
-        ? precoInformado.toDouble()
-        : precoInformado is String
-            ? double.tryParse(precoInformado.trim())
+    final valor = json['preco'];
+    final double? preco = valor is num
+        ? valor.toDouble()
+        : valor is String
+            ? double.tryParse(valor.trim().replaceAll(',', '.'))
             : null;
 
-    // Verifica se o preço é válido
-    if (precoProduto == null || !precoProduto.isFinite || precoProduto <= 0) {
+    if (preco == null || !preco.isFinite || preco <= 0) {
       throw const FormatException(
-        'O preço deve ser maior que zero!',
+        'O preço deve ser maior que zero.',
       );
     }
 
-    // Recupera a URL da imagem (aceita imagemUrl e imagem_url)
-    final imagemInformada = json['imagemUrl'] ?? json['imagem_url'];
+    // Prioriza a coluna real do banco e aceita os nomes antigos.
+    final imagemInformada = json.containsKey('imagem')
+        ? json['imagem']
+        : json['imagemUrl'] ?? json['imagem_url'];
 
-    if (imagemInformada != null && imagemInformada is! String) {
+    final imagem = textoOpcional(imagemInformada, 'imagem');
+
+    if (imagem != null) {
+      final uri = Uri.tryParse(imagem);
+
+      if (uri == null ||
+          uri.host.isEmpty ||
+          (uri.scheme != 'http' && uri.scheme != 'https')) {
+        throw const FormatException(
+          'A imagem deve conter uma URL válida.',
+        );
+      }
+    }
+
+    if (json.containsKey('ativo') && json['ativo'] is! bool) {
       throw const FormatException(
-        'A URL da imagem deve ser um texto!',
+        'O campo ativo deve ser true ou false.',
       );
     }
 
-    final String? imagemProduto =
-        imagemInformada is String && imagemInformada.trim().isNotEmpty
-            ? imagemInformada.trim()
-            : null;
-
-    // Retorna o objeto Produto validado
     return Produto(
-      id: idProduto,
-      nome: nomeProduto,
-      descricao: descricaoProduto,
-      preco: precoProduto,
-      imagemUrl: imagemProduto,
+      id: textoOpcional(json['id'], 'id'),
+      nome: nome,
+      descricao: textoOpcional(json['descricao'], 'descricao') ?? '',
+      preco: preco,
+      imagemUrl: imagem,
+      categoria: textoOpcional(json['categoria'], 'categoria'),
+      ativo: json['ativo'] as bool? ?? true,
     );
   }
-
-  // ==========================================
-  // CONVERTER OBJETO PRODUTO PARA JSON
-  // ==========================================
 
   Map<String, dynamic> toJson() {
     return {
@@ -103,35 +90,22 @@ class Produto {
       'nome': nome,
       'descricao': descricao,
       'preco': preco,
-      'imagemUrl': imagemUrl,
-      'imagem_url': imagemUrl, // Garante compatibilidade com ambas as chaves
+      'imagem': imagemUrl,
+      'categoria': categoria,
+      'ativo': ativo,
     };
   }
 
-  // ==========================================
-  // CONVERTER OBJETO PARA O SUPABASE / POSTGRES
-  // ==========================================
-
-  Map<String, dynamic> toDatabaseMap() {
-    return {
-      if (id != null) 'id': id,
-      'nome': nome,
-      'descricao': descricao,
-      'preco': preco,
-      'imagem_url': imagemUrl, // Coluna padrão no banco Supabase
-    };
-  }
-
-  // ==========================================
-  // CRIAR CÓPIA DO PRODUTO
-  // ==========================================
+  Map<String, dynamic> toDatabaseMap() => toJson();
 
   Produto copyWith({
-    dynamic id,
+    String? id,
     String? nome,
     String? descricao,
     double? preco,
     String? imagemUrl,
+    String? categoria,
+    bool? ativo,
   }) {
     return Produto(
       id: id ?? this.id,
@@ -139,21 +113,13 @@ class Produto {
       descricao: descricao ?? this.descricao,
       preco: preco ?? this.preco,
       imagemUrl: imagemUrl ?? this.imagemUrl,
+      categoria: categoria ?? this.categoria,
+      ativo: ativo ?? this.ativo,
     );
   }
 
-  // ==========================================
-  // REPRESENTAÇÃO DO PRODUTO EM TEXTO
-  // ==========================================
-
   @override
   String toString() {
-    return 'Produto('
-        'id: $id, '
-        'nome: $nome, '
-        'descricao: $descricao, '
-        'preco: $preco, '
-        'imagemUrl: $imagemUrl'
-        ')';
+    return 'Produto(id: $id, nome: $nome, preco: $preco, ativo: $ativo)';
   }
 }

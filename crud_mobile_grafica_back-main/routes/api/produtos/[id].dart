@@ -1,70 +1,157 @@
 import 'dart:io';
+
 import 'package:crud_mobile_grafica_back/models/produtos.dart';
 import 'package:dart_frog/dart_frog.dart';
-import 'package:supabase/supabase.dart';
+import 'package:supabase/supabase.dart' hide HttpMethod;
+
+Response _erro(int status, String mensagem) {
+  return Response.json(
+    statusCode: status,
+    body: {
+      'sucesso': false,
+      'mensagem': mensagem,
+    },
+  );
+}
 
 Future<Response> onRequest(RequestContext context, String id) async {
-  // Valida se o ID não está vazio
-  if (id.trim().isEmpty) {
-    return Response.json(
-      statusCode: HttpStatus.badRequest,
-      body: {'erro': 'ID do produto inválido'},
+  final produtoId = id.trim();
+
+  final uuidValido = RegExp(
+    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+  ).hasMatch(produtoId);
+
+  if (!uuidValido) {
+    return _erro(
+      HttpStatus.badRequest,
+      'O ID do produto deve ser um UUID válido.',
     );
   }
 
-  final method = context.request.method.name.toUpperCase();
-  switch (method) {
-    case 'PUT':
-      return _atualizarProduto(context, id);
-    case 'DELETE':
-      return _deletarProduto(context, id);
-    default:
-      return Response(statusCode: HttpStatus.methodNotAllowed);
-  }
-}
+  final metodo = context.request.method.name.toUpperCase();
 
-// 🟡 PUT: Atualizar produto existente
-Future<Response> _atualizarProduto(RequestContext context, String id) async {
-  try {
-    final supabase = context.read<SupabaseClient>();
-
-    final body = await context.request.json() as Map<String, dynamic>;
-    final produto = Produto.fromJson(body);
-
-    await supabase
-        .from('produto')
-        .update({
-          'nome': produto.nome,
-          'descricao': produto.descricao,
-          'preco': produto.preco,
-          'imagem': produto.imagemUrl, // Ajustado para a coluna 'imagem' do seu banco
-        })
-        .eq('id', id);
-
-    return Response.json(body: {'mensagem': 'Produto atualizado com sucesso!'});
-  } catch (e) {
+  if (metodo != 'PUT' && metodo != 'DELETE') {
     return Response.json(
-      statusCode: HttpStatus.badRequest,
-      body: {'erro': 'Erro ao atualizar produto: ${e.toString()}'},
+      statusCode: HttpStatus.methodNotAllowed,
+      headers: {'Allow': 'PUT, DELETE'},
+      body: {
+        'sucesso': false,
+        'mensagem': 'Método não permitido.',
+      },
     );
   }
-}
 
-// 🔴 DELETE: Excluir produto por ID
-Future<Response> _deletarProduto(RequestContext context, String id) async {
   try {
     final supabase = context.read<SupabaseClient>();
 
-    await supabase
-        .from('produto')
-        .delete()
-        .eq('id', id);
+    // EXCLUSÃO
+    if (metodo == 'DELETE') {
+      final removido = await supabase
+          .from('produto')
+          .delete()
+          .eq('id', produtoId)
+          .select('id')
+          .maybeSingle();
 
-    return Response.json(body: {'mensagem': 'Produto excluído com sucesso!'});
-  } catch (e) {
+      if (removido == null) {
+        return _erro(
+          HttpStatus.notFound,
+          'Produto não encontrado ou sem permissão para excluir.',
+        );
+      }
+
+      return Response.json(
+        body: {
+          'sucesso': true,
+          'mensagem': 'Produto excluído com sucesso.',
+          'id': produtoId,
+        },
+      );
+    }
+
+    // ATUALIZAÇÃO
+    final dados = await context.request.json();
+
+    if (dados is! Map<String, dynamic>) {
+      return _erro(
+        HttpStatus.badRequest,
+        'Envie um objeto JSON com os dados do produto.',
+      );
+    }
+
+    final produto = Produto.fromJson(dados);
+
+    final possuiImagem = dados.containsKey('imagem') ||
+        dados.containsKey('imagemUrl') ||
+        dados.containsKey('imagem_url');
+
+    // Campos opcionais ausentes preservam os valores existentes.
+    final atualizacao = <String, dynamic>{
+      'nome': produto.nome,
+      'preco': produto.preco,
+      if (dados.containsKey('descricao'))
+        'descricao': produto.descricao,
+      if (possuiImagem) 'imagem': produto.imagemUrl,
+      if (dados.containsKey('categoria'))
+        'categoria': produto.categoria,
+      if (dados.containsKey('ativo')) 'ativo': produto.ativo,
+    };
+
+    final atualizado = await supabase
+        .from('produto')
+        .update(atualizacao)
+        .eq('id', produtoId)
+        .select()
+        .maybeSingle();
+
+    if (atualizado == null) {
+      return _erro(
+        HttpStatus.notFound,
+        'Produto não encontrado ou sem permissão para atualizar.',
+      );
+    }
+
     return Response.json(
-      statusCode: HttpStatus.internalServerError,
-      body: {'erro': 'Erro ao excluir produto: ${e.toString()}'},
+      body: {
+        'sucesso': true,
+        'mensagem': 'Produto atualizado com sucesso.',
+        'produto': atualizado,
+      },
+    );
+  } on FormatException catch (erro) {
+    return _erro(
+      HttpStatus.badRequest,
+      erro.message,
+    );
+  } on PostgrestException catch (erro) {
+    stderr.writeln('Erro na operação do produto: $erro');
+
+    if (erro.code == '23503') {
+      return _erro(
+        HttpStatus.conflict,
+        'Este produto está vinculado a um pedido. '
+        'Desative o produto para preservar o histórico.',
+      );
+    }
+
+    if (erro.code == '42501') {
+      return _erro(
+        HttpStatus.forbidden,
+        'Sem permissão para realizar essa operação.',
+      );
+    }
+
+    return _erro(
+      HttpStatus.internalServerError,
+      'Não foi possível concluir a operação no banco.',
+    );
+  } catch (erro, stackTrace) {
+    stderr.writeln('Erro ao alterar produto: $erro');
+    stderr.writeln(stackTrace);
+
+    return _erro(
+      HttpStatus.internalServerError,
+      'Erro interno ao processar o produto.',
     );
   }
 }
