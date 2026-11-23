@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
-
+import 'package:crud_mobile_grafica_back/services/storage_produtos.dart';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:supabase/supabase.dart' hide HttpMethod;
 import 'package:uuid/uuid.dart';
@@ -146,7 +146,7 @@ Future<Response> onRequest(RequestContext context) async {
       'webp': 'image/webp',
     };
 
-    final supabase = context.read<SupabaseClient>();
+    final supabase = clienteStorageProdutos();
     final storage = supabase.storage.from(_bucket);
 
     await storage.uploadBinary(

@@ -1,5 +1,5 @@
 import 'dart:convert';
-
+import 'package:crud_mobile_grafica_back/services/sessoes_admin.dart';
 import 'package:crypto/crypto.dart';
 import 'package:dart_frog/dart_frog.dart';
 import 'package:supabase/supabase.dart';
@@ -84,19 +84,22 @@ Future<Response> onRequest(RequestContext context) async {
     final senhaArmazenada = adminEncontrado['senha']?.toString() ?? '';
 
     // Gera o mesmo hash SHA-256 em Base64 usado no cadastrar.dart
-    final senhaHashEnviada =
-        base64Encode(sha256.convert(utf8.encode(senha)).bytes);
+    final senhaHashEnviada = base64Encode(
+      sha256.convert(utf8.encode(senha)).bytes,
+    );
 
     if (senhaArmazenada.isEmpty || senhaHashEnviada != senhaArmazenada) {
       return respostaErro(401, 'E-mail ou senha inválidos!');
     }
 
     // Login validado com sucesso
+    // Executado somente depois de conferir a senha.
     return Response.json(
       statusCode: 200,
       body: {
         'sucesso': true,
         'mensagem': 'Login realizado com sucesso!',
+        'token': SessoesAdmin.criar(),
         'usuario': {
           'id_adm': idAdmin,
           'nome': nomeAdmin,
