@@ -10,15 +10,14 @@ SupabaseClient clienteStorageProdutos() {
   if (existente != null) return existente;
 
   final configuracao = DotEnv();
-
-  // Configuração local do Windows, fora da pasta do Git.
   final pastaLocal = Platform.environment['LOCALAPPDATA'];
 
   if (pastaLocal != null && pastaLocal.isNotEmpty) {
     final separador = Platform.pathSeparator;
 
     final arquivo = File(
-      '$pastaLocal${separador}MobileGrafica${separador}backend.env',
+      '$pastaLocal${separador}MobileGrafica'
+      '${separador}backend.env',
     );
 
     if (arquivo.existsSync()) {
@@ -26,30 +25,23 @@ SupabaseClient clienteStorageProdutos() {
     }
   }
 
-  // Prioriza a variável do terminal.
   String lerConfiguracao(String nome) {
-    final valorTerminal = Platform.environment[nome]?.trim() ?? '';
+    // Prioriza o arquivo local que acabamos de validar.
+    final valorArquivo = configuracao[nome]?.trim() ?? '';
 
-    if (valorTerminal.isNotEmpty) {
-      return valorTerminal;
+    if (valorArquivo.isNotEmpty) {
+      return valorArquivo;
     }
 
-    return configuracao[nome]?.trim() ?? '';
+    return Platform.environment[nome]?.trim() ?? '';
   }
 
   final chave = lerConfiguracao('SUPABASE_SECRET_KEY');
 
-  if (chave.isEmpty) {
+  if (!chave.startsWith('sb_secret_')) {
     throw StateError(
-      'Chave secreta ausente. Configure SUPABASE_SECRET_KEY '
-      'no terminal ou no arquivo local MobileGrafica/backend.env.',
-    );
-  }
-
-  if (chave.startsWith('sb_publishable_')) {
-    throw StateError(
-      'Foi informada uma chave pública. '
-      'Use a Secret key ou a chave legada service_role.',
+      'Configure a Secret key validada no arquivo '
+      'MobileGrafica/backend.env.',
     );
   }
 
@@ -60,7 +52,6 @@ SupabaseClient clienteStorageProdutos() {
       : 'https://fshgacospypbgxzzpnxt.supabase.co';
 
   final cliente = SupabaseClient(url, chave);
-
   _clienteStorage = cliente;
 
   return cliente;

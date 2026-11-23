@@ -71,7 +71,7 @@ Future<Response> onRequest(RequestContext context) async {
     // Busca o administrador na tabela 'admin' pelo e-mail
     final adminEncontrado = await supabase
         .from('admin')
-        .select('id_adm, nome, email, senha')
+        .select('id_adm, nome, email, cpf, senha')
         .eq('email', email)
         .maybeSingle();
     print(
@@ -85,6 +85,7 @@ Future<Response> onRequest(RequestContext context) async {
     final idAdmin = adminEncontrado['id_adm']?.toString() ?? '';
     final nomeAdmin = adminEncontrado['nome']?.toString() ?? '';
     final emailAdmin = adminEncontrado['email']?.toString() ?? '';
+    final cpfAdmin = adminEncontrado['cpf']?.toString() ?? '';
     final senhaArmazenada = adminEncontrado['senha']?.toString() ?? '';
 
     // Gera o mesmo hash SHA-256 em Base64 usado no cadastrar.dart
@@ -137,6 +138,7 @@ Future<Response> onRequest(RequestContext context) async {
           'id_adm': idAdmin,
           'nome': nomeAdmin,
           'email': emailAdmin,
+          'cpf': adminEncontrado['cpf']?.toString() ?? '',
         },
       },
     );
